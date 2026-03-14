@@ -100,10 +100,12 @@
     .tc-card h3 { font-size: 1rem; margin: 0 0 0.35rem 0; }
     .tc-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
     .tc-scenario { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.75rem; }
-    .tc-steps { font-size: 0.85rem; }
+    .tc-steps { font-size: 0.85rem; margin-top: 0.5rem; }
+    .tc-steps .steps-label { font-weight: 600; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
     .tc-steps ol { margin: 0; padding-left: 1.25rem; }
-    .tc-steps li { margin-bottom: 0.25rem; }
+    .tc-steps li { margin-bottom: 0.35rem; }
     .tc-steps .expected { color: var(--accent); }
+    .tc-steps .no-steps { color: var(--muted); font-style: italic; }
     .run-row { margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     .run-row input { max-width: 320px; }
     .run-hint {
@@ -157,16 +159,21 @@
     <label for="story">Story / MR description (or acceptance criteria)</label>
     <textarea id="story" placeholder="e.g. As a user I want to log in with email and password. Acceptance criteria: Email and password fields, Submit button, show welcome message on success, show error on invalid credentials."></textarea>
 
-    <div class="row">
+    <div class="row" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
       <button class="btn-primary" id="generateBtn">Generate test cases</button>
+      <label class="auto-mode-label" style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer; user-select: none;">
+        <input type="checkbox" id="autoMode" />
+        <span>Auto mode: generate then run all tests</span>
+      </label>
     </div>
     <div id="genError" class="error"></div>
 
     <div class="test-cases" id="testCasesSection" hidden>
       <h2>Generated test cases</h2>
+      <p class="run-hint" style="margin-top: 0;">For good coverage the AI should produce at least 3 cases: happy path, invalid/negative case, and a validation case (e.g. empty fields).</p>
       <div id="testCasesList"></div>
       <div class="run-row">
-        <input type="text" id="baseUrl" placeholder="Base URL (e.g. http://localhost:3456)" />
+        <input type="text" id="baseUrl" value="http://localhost:3456" placeholder="Base URL (e.g. http://localhost:3456)" />
         <button class="btn-secondary" id="runFirstBtn">Run first test</button>
         <button class="btn-secondary" id="runAllBtn">Run all tests</button>
       </div>
@@ -185,6 +192,7 @@
     const runFirstBtn = document.getElementById("runFirstBtn");
     const runAllBtn = document.getElementById("runAllBtn");
     const runResult = document.getElementById("runResult");
+    const autoModeEl = document.getElementById("autoMode");
 
     let lastTestCases = [];
 
@@ -209,6 +217,10 @@
         if (lastTestCases.length === 0) throw new Error("No test cases returned. Is Ollama running? Try: ollama run llama3.2");
         renderTestCases(lastTestCases);
         testCasesSection.hidden = false;
+        if (autoModeEl && autoModeEl.checked) {
+          const baseUrl = baseUrlEl.value.trim() || "http://localhost:3456";
+          if (baseUrl) runAllTests(baseUrl);
+        }
       } catch (e) {
         genError.textContent = e.message;
         lastTestCases = [];
@@ -227,9 +239,13 @@
           <div class="tc-meta">${tc.id} · ${tc.priority}</div>
           <div class="tc-scenario">${escapeHtml(tc.scenario)}</div>
           <div class="tc-steps">
-            <ol>
-              ${(tc.steps || []).map((s) => `<li>${escapeHtml(s.action)} <span class="expected">→ ${escapeHtml(s.expectedResult || "")}</span></li>`).join("")}
-            </ol>
+            <div class="steps-label">Steps</div>
+            ${(tc.steps && tc.steps.length) ? `<ol>${tc.steps.map((s) => {
+              const action = (s.action || "").trim();
+              const expected = (s.expectedResult || s.expectResult || "").trim();
+              const text = action || expected ? `${escapeHtml(action || "Step " + (s.stepNumber || ""))}${expected ? ` <span class="expected">→ ${escapeHtml(expected)}</span>` : ""}` : "—";
+              return `<li>${text}</li>`;
+            }).join("")}</ol>` : `<p class="no-steps">No steps for this case.</p>`}
           </div>
         </div>
       `
@@ -281,14 +297,9 @@
       }
     });
 
-    runAllBtn.addEventListener("click", async () => {
+    async function runAllTests(baseUrl) {
       if (lastTestCases.length === 0) {
         runResult.innerHTML = '<span class="error">Generate test cases first.</span>';
-        return;
-      }
-      const baseUrl = baseUrlEl.value.trim();
-      if (!baseUrl) {
-        runResult.innerHTML = '<span class="error">Enter base URL.</span>';
         return;
       }
       runFirstBtn.disabled = true;
@@ -329,6 +340,19 @@
       renderRunAllResults(results);
       runFirstBtn.disabled = false;
       runAllBtn.disabled = false;
+    }
+
+    runAllBtn.addEventListener("click", async () => {
+      const baseUrl = baseUrlEl.value.trim();
+      if (lastTestCases.length === 0) {
+        runResult.innerHTML = '<span class="error">Generate test cases first.</span>';
+        return;
+      }
+      if (!baseUrl) {
+        runResult.innerHTML = '<span class="error">Enter base URL.</span>';
+        return;
+      }
+      await runAllTests(baseUrl);
     });
 
     function renderRunAllResults(results) {

@@ -153,11 +153,13 @@ export async function runTest(testCase, baseUrl) {
         } else if (action.includes("enter") || action.includes("type") || action.includes("fill")) {
           const forEmail = action.includes("email") || expected.includes("email");
           const fillValue = forEmail ? "test@example.com" : "test";
-          const customLoc = getLocatorFromSelector(page, step.selector);
-          if (customLoc) {
-            await customLoc.first().fill(fillValue);
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled (selector)" });
-            logStep(i + 1, step.action, "ok", "Filled (selector)");
+          let loc = getLocatorFromSelector(page, step.selector);
+          if (!loc) loc = forEmail ? await getLocatorFromStep(page, step, "email") : null;
+          if (loc) {
+            await loc.fill(fillValue);
+            const detail = step.selector ? "Filled (selector)" : "Filled (discovered)";
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail });
+            logStep(i + 1, step.action, "ok", detail);
           } else {
             const selector = forEmail ? 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"]' : 'input[type="text"], input:not([type="hidden"])';
             await page.locator(selector).first().fill(fillValue);
@@ -166,11 +168,13 @@ export async function runTest(testCase, baseUrl) {
           }
           await delay();
         } else if (action.includes("password")) {
-          const customLoc = getLocatorFromSelector(page, step.selector);
-          if (customLoc) {
-            await customLoc.first().fill("password123");
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled (selector)" });
-            logStep(i + 1, step.action, "ok", "Filled (selector)");
+          let loc = getLocatorFromSelector(page, step.selector);
+          if (!loc) loc = await getLocatorFromStep(page, step, "password");
+          if (loc) {
+            await loc.fill("password123");
+            const detail = step.selector ? "Filled (selector)" : "Filled (discovered)";
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail });
+            logStep(i + 1, step.action, "ok", detail);
           } else {
             const sel = 'input[type="password"], input[name="password"], input[id="password"]';
             await page.locator(sel).first().fill("password123");
@@ -179,11 +183,13 @@ export async function runTest(testCase, baseUrl) {
           }
           await delay();
         } else if (action.includes("click") || action.includes("submit") || action.includes("press")) {
-          const customLoc = getLocatorFromSelector(page, step.selector);
-          if (customLoc) {
-            await customLoc.first().click();
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked (selector)" });
-            logStep(i + 1, step.action, "ok", "Clicked (selector)");
+          let loc = getLocatorFromSelector(page, step.selector);
+          if (!loc) loc = await getLocatorFromStep(page, step, "click");
+          if (loc) {
+            await loc.click();
+            const detail = step.selector ? "Clicked (selector)" : "Clicked (discovered)";
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail });
+            logStep(i + 1, step.action, "ok", detail);
           } else {
             const btn = page.locator('button[type="submit"], input[type="submit"], button, a.button, [role="button"]').first();
             await btn.click();

@@ -6,18 +6,22 @@ Each test case must have:
 - id: short kebab-case id (e.g. "login-happy-path")
 - title: one line summary
 - scenario: what is being tested (1-2 sentences)
-- steps: array of { stepNumber, action, expectedResult } and optionally selector for complex or ambiguous pages
+- steps: array of { stepNumber, action, expectedResult }; optionally add selector only when needed
 - priority: "high" | "medium" | "low"
 
-Step selector (optional but recommended for complex flows): use when the target element is not obvious. Supported formats:
-- data-testid=value → element with data-testid="value"
-- id=value or #value → element with id="value"
-- name=value → input/element with name="value"
-- role=button name=Submit → role and accessible name (role=link name=Sign up, role=textbox name=Email)
-- label=Email → label text (for inputs)
-- CSS selector → e.g. .login-form button[type="submit"], .nav a:has-text("Dashboard")
+Steps are executed automatically: the runner finds elements from your action and expectedResult text. Write clear, UI-oriented actions so the right elements can be discovered (e.g. "Fill email in login form", "Click Sign in", "Enter password"). You do not need to add selectors unless the page is very ambiguous.
 
-Include happy path, at least one negative/validation case, and edge cases where relevant. Keep steps concrete and UI-oriented. Add selector when multiple similar elements exist or for complex layouts.`;
+Optional selector (only for ambiguous cases): use when the same action could match multiple elements. Formats:
+- data-testid=value, id=value, name=value
+- role=button name=Submit, label=Email
+- CSS selector
+
+You MUST output at least 3 test cases for reasonable coverage. One test case is not enough. Always include:
+1. Happy path (valid inputs, success flow)
+2. At least one negative case (e.g. invalid credentials, wrong format)
+3. At least one validation/edge case (e.g. empty fields, error message shown)
+
+Keep steps concrete; mention "login", "sign in", "newsletter", etc. in the action or expectedResult when the context matters.`;
 
 function humanizeId(id) {
   if (!id || typeof id !== "string") return "";
@@ -53,44 +57,79 @@ function normalizeTestCases(parsed) {
   });
 }
 
+/**
+ * Repair common Ollama JSON mistakes: unquoted stepNumber and "action","val1","val2" (missing expectedResult key).
+ */
+function repairOllamaJson(str) {
+  let s = str
+    .replace(/([\s{,])stepNumber\s*:/g, '$1"stepNumber":')
+    .replace(/([\s{,])priority\s*:/g, '$1"priority":');
+  // Fix step objects like { "action","...","..." } or { stepNumber:1,"action","...","..." } -> "action":"...","expectedResult":"..."
+  s = s.replace(/"action"\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"/g, '"action":"$1","expectedResult":"$2"');
+  return s;
+}
+
 function extractJson(raw) {
   const trimmed = raw.trim();
   let parsed;
+  const repaired = repairOllamaJson(trimmed);
   try {
-    parsed = JSON.parse(trimmed);
+    parsed = JSON.parse(repaired);
     if (Array.isArray(parsed)) return { testCases: parsed };
     return parsed;
   } catch {
+    try {
+      parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return { testCases: parsed };
+      return parsed;
+    } catch {}
     // Ollama may truncate; try closing the JSON and parse again.
     for (const suffix of ["\n]}", "\n]", "]}", "]"]) {
       try {
-        parsed = JSON.parse(trimmed + suffix);
+        parsed = JSON.parse(repairOllamaJson(trimmed + suffix));
         if (parsed && Array.isArray(parsed.testCases) && parsed.testCases.length > 0) {
           return parsed;
         }
         if (Array.isArray(parsed) && parsed.length > 0) return { testCases: parsed };
       } catch {}
     }
-    // Truncated mid-array: find last complete test case object (ends with "}\s*,\s*" or "}")
-    const testCasesStart = trimmed.indexOf('"testCases"');
+    // Truncated mid-array: find last complete step object (has "expectedResult" or "action") and close
+    const testCasesStart = repaired.indexOf('"testCases"');
     if (testCasesStart >= 0) {
-      const arrayStart = trimmed.indexOf("[", testCasesStart);
+      const arrayStart = repaired.indexOf("[", testCasesStart);
       if (arrayStart >= 0) {
-        const afterBracket = trimmed.slice(arrayStart + 1);
+        const afterBracket = repaired.slice(arrayStart + 1);
         const lastComplete = afterBracket.lastIndexOf("},");
         if (lastComplete >= 0) {
           try {
-            const partial = trimmed.slice(0, arrayStart + 1 + lastComplete + 1) + "]}\n";
+            const partial = repaired.slice(0, arrayStart + 1 + lastComplete + 1) + "]}\n";
             parsed = JSON.parse(partial);
             if (parsed && Array.isArray(parsed.testCases) && parsed.testCases.length > 0) return parsed;
           } catch {}
+        }
+        // Last resort: truncate at last complete step in first test case (steps array)
+        const stepsStart = afterBracket.indexOf('"steps"');
+        if (stepsStart >= 0) {
+          const stepsArrStart = afterBracket.indexOf("[", stepsStart);
+          if (stepsArrStart >= 0) {
+            const stepsContent = afterBracket.slice(stepsArrStart + 1);
+            const lastStepEnd = stepsContent.lastIndexOf("},");
+            if (lastStepEnd >= 0) {
+              try {
+                const partial =
+                  repaired.slice(0, arrayStart + 1 + stepsArrStart + 1 + lastStepEnd + 1) + "]}]}\n";
+                parsed = JSON.parse(partial);
+                if (parsed && Array.isArray(parsed.testCases) && parsed.testCases.length > 0) return parsed;
+              } catch {}
+            }
+          }
         }
       }
     }
     const jsonBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonBlock) {
       try {
-        parsed = JSON.parse(jsonBlock[1].trim());
+        parsed = JSON.parse(repairOllamaJson(jsonBlock[1].trim()));
         if (Array.isArray(parsed)) return { testCases: parsed };
         return parsed;
       } catch {}
@@ -98,7 +137,7 @@ function extractJson(raw) {
     const objectMatch = trimmed.match(/\{[\s\S]*\}/);
     if (objectMatch) {
       try {
-        parsed = JSON.parse(objectMatch[0]);
+        parsed = JSON.parse(repairOllamaJson(objectMatch[0]));
         if (Array.isArray(parsed)) return { testCases: parsed };
         return parsed;
       } catch {}
@@ -106,7 +145,7 @@ function extractJson(raw) {
     const arrayMatch = trimmed.match(/\[[\s\S]*\]/);
     if (arrayMatch) {
       try {
-        return { testCases: JSON.parse(arrayMatch[0]) };
+        return { testCases: JSON.parse(repairOllamaJson(arrayMatch[0])) };
       } catch {}
     }
   }
@@ -114,7 +153,7 @@ function extractJson(raw) {
 }
 
 export async function generateTestCases(input) {
-  const userMessage = `Story / MR:\n\n${input}\n\nRespond with a single JSON object: {"testCases": [ ... ]} where testCases is an array of test case objects. No markdown or extra text.`;
+  const userMessage = `Story / MR:\n\n${input}\n\nRespond with a single JSON object only. Use strict JSON: all keys in double quotes. Format: {"testCases":[{"id":"...","title":"...","scenario":"...","steps":[{"stepNumber":1,"action":"...","expectedResult":"..."}],"priority":"high"}]}. No markdown or extra text.`;
 
   // 1) OpenAI (if API key is set)
   if (process.env.OPENAI_API_KEY) {
@@ -138,6 +177,8 @@ export async function generateTestCases(input) {
   const ollamaBase = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1";
   const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
   const ollamaTimeout = Number(process.env.OLLAMA_TIMEOUT_MS) || 120000; // 2 min (first run can be slow)
+  // Omit max_tokens so Ollama uses default -1 (unlimited). Set OLLAMA_MAX_TOKENS to cap (e.g. 4096).
+  const ollamaMaxTokens = process.env.OLLAMA_MAX_TOKENS ? Number(process.env.OLLAMA_MAX_TOKENS) : undefined;
   try {
     const openai = new OpenAI({
       apiKey: "ollama",
@@ -150,7 +191,7 @@ export async function generateTestCases(input) {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
-      max_tokens: 4096,
+      ...(ollamaMaxTokens != null && ollamaMaxTokens > 0 && { max_tokens: ollamaMaxTokens }),
     });
     const raw = completion.choices[0]?.message?.content?.trim();
     if (raw) {
