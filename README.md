@@ -58,7 +58,7 @@ Open **http://localhost:3000**.
 
 ### 5. Try the flow
 
-1. In the textarea, paste a story, e.g.  
+1. In the textarea, paste a story (see **[STORY-COMPLEX-FLOW.txt](STORY-COMPLEX-FLOW.txt)** for a complex flow with selectors). Simple example:  
    **"As a user I want to log in with email and password. Acceptance criteria: Email and password fields, Submit button, show welcome message on success, show error on invalid credentials."**
 2. Click **Generate test cases**.
 3. Review the generated test cases.
@@ -80,9 +80,24 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for diagrams: high-level flow, compon
 
 ## Limitations
 
-- **Execution** is heuristic: steps are mapped to generic actions (e.g. “enter email” → fill first email input). Complex flows need real selectors or a proper test layer.
+- **Execution** uses heuristics by default (e.g. “enter email” → first email input). For **complex flows**, the LLM can add optional **selectors** per step (`data-testid=`, `id=`, `name=`, `role= name=`, `label=`, or CSS); the executor uses them when present for precise targeting.
 - **Run first test** runs one case; **Run all tests** runs every generated case in sequence and shows a summary.
 - **AI**: requires OpenAI (API key) or **Ollama** (local, free). No mock fallback.
+
+## Selectors for complex flows
+
+When the LLM adds an optional **selector** to a step, the executor uses it for that step. Supported formats:
+
+| Format | Example | Use case |
+|--------|---------|----------|
+| `data-testid=value` | `data-testid=submit-btn` | Elements with test IDs |
+| `id=value` or `#value` | `#email`, `id=email` | By element id |
+| `name=value` | `name=email` | Form inputs by name |
+| `role=role name=Name` | `role=button name=Submit` | By ARIA role + name |
+| `label=Label text` | `label=Email` | Inputs by associated label |
+| CSS selector | `.form .submit` | Any valid CSS selector |
+
+The LLM is prompted to add selectors when multiple similar elements exist or for complex layouts. You can also paste test cases that include a `selector` field per step (e.g. from a hand-edited export).
 
 ## Possible next steps
 

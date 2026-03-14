@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Demo App – Login</title>
+  <title>Demo App – Complex flow</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -12,43 +12,51 @@
       color: #eee;
       margin: 0;
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
+    nav {
+      padding: 1rem 1.5rem;
+      background: #0f0f1a;
+      border-bottom: 1px solid #2a2a30;
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+    }
+    nav a { color: #22d3ee; text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    .container { max-width: 720px; margin: 0 auto; padding: 2rem; }
     .card {
       background: #16213e;
-      padding: 2rem;
+      padding: 1.5rem;
       border-radius: 12px;
-      width: 100%;
-      max-width: 360px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
-    h1 { margin: 0 0 1.5rem 0; font-size: 1.5rem; }
-    label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: #aaa; }
+    .card h2 { margin: 0 0 1rem 0; font-size: 1.2rem; color: #aaa; }
+    label { display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: #aaa; }
     input {
       width: 100%;
       padding: 0.6rem 0.75rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
       border: 1px solid #333;
       border-radius: 6px;
       background: #0f0f1a;
       color: #eee;
       font-size: 1rem;
     }
-    button {
-      width: 100%;
-      padding: 0.75rem;
+    button, .btn {
+      padding: 0.6rem 1.25rem;
       background: #0f3460;
       color: #eee;
       border: none;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       cursor: pointer;
+      display: inline-block;
+      text-decoration: none;
     }
-    button:hover { background: #1a4a7a; }
+    button:hover, .btn:hover { background: #1a4a7a; }
     .message {
-      margin-top: 1rem;
+      margin-top: 0.75rem;
       padding: 0.75rem;
       border-radius: 6px;
       font-size: 0.9rem;
@@ -56,33 +64,82 @@
     }
     .message.success { display: block; background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid #4ade80; }
     .message.error { display: block; background: rgba(248, 113, 113, 0.2); color: #f87171; border: 1px solid #f87171; }
+    #welcomeSection { display: none; }
+    #welcomeSection.visible { display: block; }
+    #mainContent.hidden { display: none; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Sign in</h1>
-    <form id="loginForm">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" placeholder="you@example.com" required />
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" placeholder="••••••••" required />
-      <button type="submit">Submit</button>
-    </form>
-    <div id="message" class="message"></div>
+  <nav>
+    <a href="#home">Home</a>
+    <a href="#newsletter">Newsletter</a>
+    <a href="#login" data-testid="nav-signin">Sign in</a>
+  </nav>
+
+  <div class="container">
+    <div id="mainContent">
+      <div class="card" id="newsletter">
+        <h2>Newsletter</h2>
+        <p style="color:#888;font-size:0.9rem;margin-bottom:1rem;">Get updates. One email field on this page.</p>
+        <form id="newsletterForm" data-testid="newsletter-form">
+          <label for="newsletter-email">Your email</label>
+          <input type="email" id="newsletter-email" name="newsletterEmail" data-testid="newsletter-email" placeholder="newsletter@example.com" />
+          <button type="submit" data-testid="newsletter-submit">Subscribe</button>
+        </form>
+        <div id="newsletterMessage" class="message"></div>
+      </div>
+
+      <div class="card" id="login">
+        <h2>Sign in</h2>
+        <p style="color:#888;font-size:0.9rem;margin-bottom:1rem;">Another email field here — use selectors to target the login form.</p>
+        <form id="loginForm" data-testid="login-form">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" name="email" data-testid="login-email" placeholder="you@example.com" required />
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" name="password" data-testid="login-password" placeholder="••••••••" required />
+          <button type="submit" data-testid="login-submit">Sign in</button>
+        </form>
+        <div id="loginMessage" class="message"></div>
+      </div>
+    </div>
+
+    <div id="welcomeSection" class="card">
+      <h2>Welcome</h2>
+      <p id="welcomeText" class="message success">You are logged in.</p>
+      <button type="button" id="logoutBtn" data-testid="logout-btn">Log out</button>
+    </div>
   </div>
+
   <script>
+    document.getElementById("newsletterForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const email = document.getElementById("newsletter-email").value.trim();
+      const msg = document.getElementById("newsletterMessage");
+      msg.className = "message " + (email ? "success" : "error");
+      msg.textContent = email ? "Subscribed with " + email : "Enter an email.";
+    });
+
     document.getElementById("loginForm").addEventListener("submit", function (e) {
       e.preventDefault();
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      const msg = document.getElementById("message");
+      const email = document.getElementById("login-email").value;
+      const password = document.getElementById("login-password").value;
+      const msg = document.getElementById("loginMessage");
       if (email && password) {
         msg.className = "message success";
         msg.textContent = "Welcome! You are logged in.";
+        document.getElementById("mainContent").classList.add("hidden");
+        document.getElementById("welcomeSection").classList.add("visible");
       } else {
         msg.className = "message error";
         msg.textContent = "Please enter email and password.";
       }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", function () {
+      document.getElementById("welcomeSection").classList.remove("visible");
+      document.getElementById("mainContent").classList.remove("hidden");
+      document.getElementById("loginMessage").className = "message";
+      document.getElementById("loginMessage").textContent = "";
     });
   </script>
 </body>

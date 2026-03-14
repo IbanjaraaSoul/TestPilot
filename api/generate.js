@@ -6,10 +6,18 @@ Each test case must have:
 - id: short kebab-case id (e.g. "login-happy-path")
 - title: one line summary
 - scenario: what is being tested (1-2 sentences)
-- steps: array of { stepNumber, action, expectedResult }
+- steps: array of { stepNumber, action, expectedResult } and optionally selector for complex or ambiguous pages
 - priority: "high" | "medium" | "low"
 
-Include happy path, at least one negative/validation case, and edge cases where relevant. Focus on behavior a manual tester would verify. Keep steps concrete and UI-oriented (e.g. "Enter valid email in email field", "Click Submit button").`;
+Step selector (optional but recommended for complex flows): use when the target element is not obvious. Supported formats:
+- data-testid=value → element with data-testid="value"
+- id=value or #value → element with id="value"
+- name=value → input/element with name="value"
+- role=button name=Submit → role and accessible name (role=link name=Sign up, role=textbox name=Email)
+- label=Email → label text (for inputs)
+- CSS selector → e.g. .login-form button[type="submit"], .nav a:has-text("Dashboard")
+
+Include happy path, at least one negative/validation case, and edge cases where relevant. Keep steps concrete and UI-oriented. Add selector when multiple similar elements exist or for complex layouts.`;
 
 function humanizeId(id) {
   if (!id || typeof id !== "string") return "";
@@ -29,11 +37,17 @@ function normalizeTestCases(parsed) {
       (tc.scenario && typeof tc.scenario === "string" ? tc.scenario.split(/[.!?]/)[0].trim().slice(0, 80) : "") ||
       (Array.isArray(tc.steps) && tc.steps[0]?.action ? tc.steps[0].action : "") ||
       `Test case ${i + 1}`;
+    const steps = (Array.isArray(tc.steps) ? tc.steps : []).map((s, j) => ({
+      stepNumber: s.stepNumber ?? j + 1,
+      action: s.action ?? "",
+      expectedResult: s.expectedResult ?? s.expectResult ?? "",
+      selector: s.selector || s.selectorHint || "",
+    }));
     return {
       id: tc.id || `tc-${i + 1}`,
       title,
       scenario: tc.scenario || "",
-      steps: Array.isArray(tc.steps) ? tc.steps : [],
+      steps,
       priority: tc.priority || "medium",
     };
   });
@@ -47,6 +61,32 @@ function extractJson(raw) {
     if (Array.isArray(parsed)) return { testCases: parsed };
     return parsed;
   } catch {
+    // Ollama may truncate; try closing the JSON and parse again.
+    for (const suffix of ["\n]}", "\n]", "]}", "]"]) {
+      try {
+        parsed = JSON.parse(trimmed + suffix);
+        if (parsed && Array.isArray(parsed.testCases) && parsed.testCases.length > 0) {
+          return parsed;
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) return { testCases: parsed };
+      } catch {}
+    }
+    // Truncated mid-array: find last complete test case object (ends with "}\s*,\s*" or "}")
+    const testCasesStart = trimmed.indexOf('"testCases"');
+    if (testCasesStart >= 0) {
+      const arrayStart = trimmed.indexOf("[", testCasesStart);
+      if (arrayStart >= 0) {
+        const afterBracket = trimmed.slice(arrayStart + 1);
+        const lastComplete = afterBracket.lastIndexOf("},");
+        if (lastComplete >= 0) {
+          try {
+            const partial = trimmed.slice(0, arrayStart + 1 + lastComplete + 1) + "]}\n";
+            parsed = JSON.parse(partial);
+            if (parsed && Array.isArray(parsed.testCases) && parsed.testCases.length > 0) return parsed;
+          } catch {}
+        }
+      }
+    }
     const jsonBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonBlock) {
       try {
@@ -110,6 +150,7 @@ export async function generateTestCases(input) {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
+      max_tokens: 4096,
     });
     const raw = completion.choices[0]?.message?.content?.trim();
     if (raw) {

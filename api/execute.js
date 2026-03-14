@@ -15,6 +15,95 @@ function logStep(stepNum, action, status, detail) {
   console.log(`  [${statusIcon}] Step ${stepNum}: ${action} — ${detail}`);
 }
 
+/**
+ * Resolve a Playwright locator from step.selector / step.selectorHint for complex flows.
+ * Supports: data-testid=, id=/#, name=, role= name=, label=, or plain CSS.
+ */
+function getLocatorFromSelector(page, selectorStr) {
+  const s = (selectorStr || "").trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (lower.startsWith("data-testid=")) {
+    const value = s.slice("data-testid=".length).trim().replace(/^["']|["']$/g, "");
+    return value ? page.getByTestId(value) : null;
+  }
+  if (lower.startsWith("id=") || s.startsWith("#")) {
+    const value = s.startsWith("#") ? s.slice(1).trim() : s.slice(3).trim().replace(/^["']|["']$/g, "");
+    return value ? page.locator(`#${value.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`) : null;
+  }
+  if (lower.startsWith("name=")) {
+    const value = s.slice(5).trim().replace(/^["']|["']$/g, "");
+    return value ? page.locator(`[name="${value.replace(/"/g, '\\"')}"]`) : null;
+  }
+  if (lower.startsWith("role=")) {
+    const rest = s.slice(5).trim();
+    const nameMatch = rest.match(/name\s*=\s*["']([^"']*)["']|name\s*=\s*(\S+)/i);
+    const name = nameMatch ? (nameMatch[1] ?? nameMatch[2] ?? "").trim() : undefined;
+    const role = rest.replace(/\s*name\s*=\s*["']?[^"'\s]*["']?\s*$/i, "").trim().toLowerCase();
+    return page.getByRole(role, name ? { name } : {});
+  }
+  if (lower.startsWith("label=")) {
+    const value = s.slice(6).trim().replace(/^["']|["']$/g, "");
+    return value ? page.getByLabel(value) : null;
+  }
+  return page.locator(s);
+}
+
+/**
+ * Discover a locator from step action/expectedResult when no selector is provided.
+ * Uses role+name, label, and context (e.g. "login" form) so the right element is chosen.
+ */
+async function getLocatorFromStep(page, step, kind) {
+  const action = (step.action || "").trim();
+  const expected = (step.expectedResult || "").trim();
+  const combined = `${action} ${expected}`.toLowerCase();
+
+  if (kind === "click") {
+    // Prefer button/link text from action: "Click Sign in", "Submit the form", "Press Login"
+    const clickPhrases = action.match(/(?:click|press|submit)\s+(?:the\s+)?(?:button\s+)?["']?([^"'.]+)["']?/i) ||
+      action.match(/(?:click|press)\s+["']([^"']+)["']/i);
+    const name = clickPhrases ? clickPhrases[1].trim() : action.replace(/^(click|press|submit)\s+(the\s+)?/i, "").trim();
+    if (name) {
+      const byRole = page.getByRole("button", { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") });
+      if ((await byRole.count()) > 0) return byRole.first();
+      const byLink = page.getByRole("link", { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") });
+      if ((await byLink.count()) > 0) return byLink.first();
+      const byText = page.getByText(name, { exact: false });
+      if ((await byText.count()) > 0) return byText.first();
+    }
+    return null;
+  }
+
+  if (kind === "email") {
+    const isLogin = /\b(login|sign\s*in|signin)\b/.test(combined);
+    const emailSelector = 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"], input[placeholder*="Email"]';
+    if (isLogin) {
+      // Prefer email input inside a form that has a password field or "login" in id/name/class
+      const form = page.locator('form[id*="login"], form[name*="login"], form[class*="login"], form[id*="signin"], form:has(input[type="password"])').first();
+      if ((await form.count()) > 0) {
+        const inForm = form.locator(emailSelector);
+        if ((await inForm.count()) > 0) return inForm.first();
+      }
+    }
+    return page.locator(emailSelector).first();
+  }
+
+  if (kind === "password") {
+    const isLogin = /\b(login|sign\s*in|signin)\b/.test(combined);
+    const pwdSelector = 'input[type="password"], input[name="password"], input[id="password"]';
+    if (isLogin) {
+      const form = page.locator('form[id*="login"], form[name*="login"], form[class*="login"], form[id*="signin"]').first();
+      if ((await form.count()) > 0) {
+        const inForm = form.locator(pwdSelector);
+        if ((await inForm.count()) > 0) return inForm.first();
+      }
+    }
+    return page.locator(pwdSelector).first();
+  }
+
+  return null;
+}
+
 export async function runTest(testCase, baseUrl) {
   const steps = testCase.steps || [];
   const logs = [];
@@ -63,24 +152,45 @@ export async function runTest(testCase, baseUrl) {
           await delay();
         } else if (action.includes("enter") || action.includes("type") || action.includes("fill")) {
           const forEmail = action.includes("email") || expected.includes("email");
-          const selector = forEmail ? 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"]' : 'input[type="text"], input:not([type="hidden"])';
-          const first = await page.locator(selector).first();
-          await first.fill(forEmail ? "test@example.com" : "test");
-          logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled input" });
-          logStep(i + 1, step.action, "ok", "Filled input");
+          const fillValue = forEmail ? "test@example.com" : "test";
+          const customLoc = getLocatorFromSelector(page, step.selector);
+          if (customLoc) {
+            await customLoc.first().fill(fillValue);
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled (selector)" });
+            logStep(i + 1, step.action, "ok", "Filled (selector)");
+          } else {
+            const selector = forEmail ? 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"]' : 'input[type="text"], input:not([type="hidden"])';
+            await page.locator(selector).first().fill(fillValue);
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled input" });
+            logStep(i + 1, step.action, "ok", "Filled input");
+          }
           await delay();
         } else if (action.includes("password")) {
-          const sel = 'input[type="password"], input[name="password"], input[id="password"]';
-          await page.locator(sel).first().fill("password123");
-          logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled password" });
-          logStep(i + 1, step.action, "ok", "Filled password");
+          const customLoc = getLocatorFromSelector(page, step.selector);
+          if (customLoc) {
+            await customLoc.first().fill("password123");
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled (selector)" });
+            logStep(i + 1, step.action, "ok", "Filled (selector)");
+          } else {
+            const sel = 'input[type="password"], input[name="password"], input[id="password"]';
+            await page.locator(sel).first().fill("password123");
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled password" });
+            logStep(i + 1, step.action, "ok", "Filled password");
+          }
           await delay();
         } else if (action.includes("click") || action.includes("submit") || action.includes("press")) {
-          const btn = page.locator('button[type="submit"], input[type="submit"], button, a.button, [role="button"]').first();
-          await btn.click();
+          const customLoc = getLocatorFromSelector(page, step.selector);
+          if (customLoc) {
+            await customLoc.first().click();
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked (selector)" });
+            logStep(i + 1, step.action, "ok", "Clicked (selector)");
+          } else {
+            const btn = page.locator('button[type="submit"], input[type="submit"], button, a.button, [role="button"]').first();
+            await btn.click();
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked" });
+            logStep(i + 1, step.action, "ok", "Clicked");
+          }
           await page.waitForLoadState("domcontentloaded").catch(() => {});
-          logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked" });
-          logStep(i + 1, step.action, "ok", "Clicked");
           await delay();
         } else if (action.includes("see") || action.includes("verify") || action.includes("check") || expected) {
           await delay();

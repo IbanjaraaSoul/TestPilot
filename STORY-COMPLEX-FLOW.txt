@@ -1,0 +1,10 @@
+As a user I want to use the app which has two sections on the same page: (1) Newsletter signup with one email field and a Subscribe button, and (2) Login form with email, password and Sign in button. After successful login, a welcome message is shown and a Log out button appears.
+
+Acceptance criteria:
+- Newsletter: email field (use data-testid=newsletter-email), Subscribe button (data-testid=newsletter-submit). On submit show success or error message.
+- Login: email field (data-testid=login-email), password field (data-testid=login-password), Sign in button (data-testid=login-submit). On success show "Welcome! You are logged in." and the welcome section with Log out button (data-testid=logout-btn). On invalid or empty show error.
+- Because there are two email fields on the page, every step that fills or clicks in the login flow MUST use the selector: data-testid=login-email for email, data-testid=login-password for password, data-testid=login-submit for Sign in, and data-testid=logout-btn for Log out.
+- Test: successful login (fill login email, fill login password, click Sign in, see welcome message).
+- Test: login with empty fields shows error.
+- Test: newsletter subscribe with valid email shows success.
+- Test: after login, click Log out returns to the main content.
