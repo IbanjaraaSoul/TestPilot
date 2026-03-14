@@ -6,7 +6,7 @@
 
 1. **Input**: Story or MR description (e.g. “User can log in with email and password”).
 2. **Generate**: AI suggests test cases (scenarios, steps, expected results).
-3. **Execute**: Run the first test case against a given URL (Playwright); step-by-step result is shown.
+3. **Execute**: Run one test (**Run first test**) or **Run all tests** against a given URL (Playwright); step-by-step results and a summary (X passed, Y failed) are shown.
 
 ## Quick start
 
@@ -63,7 +63,7 @@ Open **http://localhost:3000**.
 2. Click **Generate test cases**.
 3. Review the generated test cases.
 4. In **Base URL** enter `http://localhost:3456` (if the demo target is running).
-5. Click **Run first test**. A **Chromium window** opens so you can watch the test run (navigate → fill email/password → click Submit). **Important:** The browser opens on the machine where the server is running — start the server from a **local terminal** (e.g. Terminal.app), not from SSH or a headless environment. If you don’t see the window, check other desktops or use Cmd+Tab. When the test finishes, the UI shows **Passed** or **Failed** with step-by-step logs.
+5. Click **Run first test** (single test) or **Run all tests** (every generated case in sequence). A **Chromium window** opens for each run so you can watch the steps (navigate → fill email/password → click Submit). **Important:** The browser opens on the machine where the server is running — start the server from a **local terminal** (e.g. Terminal.app), not from SSH or a headless environment. If you don’t see the window, check other desktops or use Cmd+Tab. When a run finishes, the UI shows **Passed** or **Failed** with step-by-step logs; **Run all tests** shows a summary (e.g. 6 passed, 0 failed) plus each result.
 
 ## Architecture
 
@@ -74,19 +74,18 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for diagrams: high-level flow, compon
 - `server.js` – Express server and routes.
 - `api/generate.js` – Calls OpenAI to produce test cases from story/MR text.
 - `api/execute.js` – Runs one test case with Playwright (navigate, fill, click, basic checks).
-- `public/index.html` – UI: story input, test case list, run first test.
+- `public/index.html` – UI: story input, test case list, **Run first test** and **Run all tests**.
 - `demo-target/` – Minimal login page used as the “app under test”.
 - `demo-target-server.js` – Serves the demo target on port 3456.
 
 ## Limitations
 
 - **Execution** is heuristic: steps are mapped to generic actions (e.g. “enter email” → fill first email input). Complex flows need real selectors or a proper test layer.
-- **One test at a time**: only “Run first test” is implemented.
+- **Run first test** runs one case; **Run all tests** runs every generated case in sequence and shows a summary.
 - **AI**: requires OpenAI (API key) or **Ollama** (local, free). No mock fallback.
 
 ## Possible next steps
 
 - Add MR/diff input (e.g. paste diff or link to MR).
 - Generate Playwright scripts per test case and save to repo.
-- Support multiple tests and a simple report.
 - Richer step-to-action mapping or selector hints from the story.
