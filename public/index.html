@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TestPilot – Story → Test Cases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #18181c;
+      --border: #2a2a30;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --accent: #22d3ee;
+      --accent-dim: #0891b2;
+      --success: #4ade80;
+      --fail: #f87171;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.85rem;
+      resize: vertical;
+    }
+    textarea::placeholder { color: var(--muted); }
+    .row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-top: 1rem; }
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    button {
+      font-family: inherit;
+      font-weight: 600;
+      padding: 0.6rem 1.25rem;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .btn-primary:hover { background: #67e8f9; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .error { color: var(--fail); font-size: 0.9rem; margin-top: 0.5rem; }
+    .test-cases { margin-top: 2rem; }
+    .test-cases h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .tc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .tc-card h3 { font-size: 1rem; margin: 0 0 0.35rem 0; }
+    .tc-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .tc-scenario { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .tc-steps { font-size: 0.85rem; }
+    .tc-steps ol { margin: 0; padding-left: 1.25rem; }
+    .tc-steps li { margin-bottom: 0.25rem; }
+    .tc-steps .expected { color: var(--accent); }
+    .run-row { margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .run-row input { max-width: 320px; }
+    .run-hint {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .run-hint code { font-family: "JetBrains Mono", monospace; font-size: 0.85em; }
+    .running-state {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .running-state p { margin: 0; color: var(--text); }
+    .running-state .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .result-box {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-family: "JetBrains Mono", monospace;
+    }
+    .result-box.pass { background: rgba(74, 222, 128, 0.1); border: 1px solid var(--success); }
+    .result-box.fail { background: rgba(248, 113, 113, 0.1); border: 1px solid var(--fail); }
+    .result-box .step-log { margin-bottom: 0.35rem; }
+    .result-box .step-log.ok { color: var(--success); }
+    .result-box .step-log.fail { color: var(--fail); }
+    .result-box .step-log.skip { color: var(--muted); }
+    .loading { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TestPilot</h1>
+    <p class="subtitle">Paste a story or MR → AI generates test cases → run them in the browser.</p>
+
+    <label for="story">Story / MR description (or acceptance criteria)</label>
+    <textarea id="story" placeholder="e.g. As a user I want to log in with email and password. Acceptance criteria: Email and password fields, Submit button, show welcome message on success, show error on invalid credentials."></textarea>
+
+    <div class="row">
+      <button class="btn-primary" id="generateBtn">Generate test cases</button>
+    </div>
+    <div id="genError" class="error"></div>
+
+    <div class="test-cases" id="testCasesSection" hidden>
+      <h2>Generated test cases</h2>
+      <div id="testCasesList"></div>
+      <div class="run-row">
+        <input type="text" id="baseUrl" placeholder="Base URL (e.g. http://localhost:3456)" />
+        <button class="btn-secondary" id="runFirstBtn">Run first test</button>
+        <button class="btn-secondary" id="runAllBtn">Run all tests</button>
+      </div>
+      <p class="run-hint"><strong>Tip:</strong> The test browser opens on the machine where the server is running. Start the server from a <strong>local terminal</strong> (e.g. Terminal.app) with <code>npm start</code> — not from a remote/SSH session — so a Chromium window can appear. Check other desktops or use Cmd+Tab if you don’t see it.</p>
+      <div id="runResult"></div>
+    </div>
+  </div>
+
+  <script>
+    const storyEl = document.getElementById("story");
+    const generateBtn = document.getElementById("generateBtn");
+    const genError = document.getElementById("genError");
+    const testCasesSection = document.getElementById("testCasesSection");
+    const testCasesList = document.getElementById("testCasesList");
+    const baseUrlEl = document.getElementById("baseUrl");
+    const runFirstBtn = document.getElementById("runFirstBtn");
+    const runAllBtn = document.getElementById("runAllBtn");
+    const runResult = document.getElementById("runResult");
+
+    let lastTestCases = [];
+
+    generateBtn.addEventListener("click", async () => {
+      genError.textContent = "";
+      const story = storyEl.value.trim();
+      if (!story) {
+        genError.textContent = "Enter a story or MR description.";
+        return;
+      }
+      generateBtn.disabled = true;
+      generateBtn.textContent = "Generating…";
+      try {
+        const res = await fetch("/api/generate-test-cases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ story }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Request failed");
+        lastTestCases = data.testCases || [];
+        if (lastTestCases.length === 0) throw new Error("No test cases returned. Is Ollama running? Try: ollama run llama3.2");
+        renderTestCases(lastTestCases);
+        testCasesSection.hidden = false;
+      } catch (e) {
+        genError.textContent = e.message;
+        lastTestCases = [];
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate test cases";
+      }
+    });
+
+    function renderTestCases(tcs) {
+      testCasesList.innerHTML = tcs
+        .map(
+          (tc) => `
+        <div class="tc-card" data-id="${tc.id}">
+          <h3>${escapeHtml(tc.title)}</h3>
+          <div class="tc-meta">${tc.id} · ${tc.priority}</div>
+          <div class="tc-scenario">${escapeHtml(tc.scenario)}</div>
+          <div class="tc-steps">
+            <ol>
+              ${(tc.steps || []).map((s) => `<li>${escapeHtml(s.action)} <span class="expected">→ ${escapeHtml(s.expectedResult || "")}</span></li>`).join("")}
+            </ol>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+    }
+
+    runFirstBtn.addEventListener("click", async () => {
+      if (lastTestCases.length === 0) {
+        runResult.innerHTML = '<span class="error">Generate test cases first.</span>';
+        return;
+      }
+      const baseUrl = baseUrlEl.value.trim();
+      if (!baseUrl) {
+        runResult.innerHTML = '<span class="error">Enter base URL.</span>';
+        return;
+      }
+      runFirstBtn.disabled = true;
+      runResult.innerHTML = `
+        <div class="running-state">
+          <div class="spinner" aria-hidden="true"></div>
+          <div>
+            <p><strong>Running test…</strong></p>
+            <p class="hint">A browser window will open — watch the steps execute. This may take 10–30 seconds.</p>
+          </div>
+        </div>
+      `;
+      try {
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 55000);
+        const res = await fetch("/api/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testCase: lastTestCases[0], baseUrl }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Execution failed");
+        renderRunResult(data);
+      } catch (e) {
+        const isTimeout = e.name === "AbortError";
+        const msg = isTimeout
+          ? "Request timed out. Run the server from a local terminal (e.g. Terminal.app) so the test browser can open. The browser window appears where the server is running."
+          : e.message;
+        runResult.innerHTML = `<div class="result-box fail">${escapeHtml(msg)}</div>`;
+      } finally {
+        runFirstBtn.disabled = false;
+      }
+    });
+
+    runAllBtn.addEventListener("click", async () => {
+      if (lastTestCases.length === 0) {
+        runResult.innerHTML = '<span class="error">Generate test cases first.</span>';
+        return;
+      }
+      const baseUrl = baseUrlEl.value.trim();
+      if (!baseUrl) {
+        runResult.innerHTML = '<span class="error">Enter base URL.</span>';
+        return;
+      }
+      runFirstBtn.disabled = true;
+      runAllBtn.disabled = true;
+      const total = lastTestCases.length;
+      const results = [];
+      for (let i = 0; i < total; i++) {
+        runResult.innerHTML = `
+          <div class="running-state">
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+              <p><strong>Running test ${i + 1} of ${total}…</strong></p>
+              <p class="hint">${escapeHtml(lastTestCases[i].title)}</p>
+            </div>
+          </div>
+        `;
+        try {
+          const ctrl = new AbortController();
+          const timeoutId = setTimeout(() => ctrl.abort(), 60000);
+          const res = await fetch("/api/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ testCase: lastTestCases[i], baseUrl }),
+            signal: ctrl.signal,
+          });
+          clearTimeout(timeoutId);
+          const data = await res.json();
+          results.push(res.ok ? data : { ...data, passed: false, errorMessage: data.error || "Request failed" });
+        } catch (e) {
+          results.push({
+            title: lastTestCases[i].title,
+            passed: false,
+            errorMessage: e.name === "AbortError" ? "Request timed out" : e.message,
+            stepLogs: [],
+          });
+        }
+      }
+      renderRunAllResults(results);
+      runFirstBtn.disabled = false;
+      runAllBtn.disabled = false;
+    });
+
+    function renderRunAllResults(results) {
+      const passed = results.filter((r) => r.passed).length;
+      const failed = results.length - passed;
+      const summary = `<div class="result-box ${failed === 0 ? "pass" : "fail"}" style="margin-bottom: 1rem;">
+        <strong>Summary:</strong> ${passed} passed, ${failed} failed (${results.length} total)
+      </div>`;
+      const details = results
+        .map((data) => {
+          const cls = data.passed ? "pass" : "fail";
+          const statusLabel = data.passed ? "Passed" : "Failed";
+          const logs = (data.stepLogs || [])
+            .map(
+              (l) =>
+                `<div class="step-log ${l.status}">Step ${l.step}: ${escapeHtml(l.action)} — ${l.status}${l.detail ? " · " + escapeHtml(l.detail) : ""}</div>`
+            )
+            .join("");
+          return `
+            <div class="result-box ${cls}" style="margin-bottom: 0.75rem;">
+              <div style="font-size: 0.95rem; margin-bottom: 0.35rem;"><strong>${statusLabel}:</strong> ${escapeHtml(data.title)}</div>
+              ${data.errorMessage ? `<div class="step-log fail" style="margin-bottom: 0.35rem;">${escapeHtml(data.errorMessage)}</div>` : ""}
+              <div style="margin-top: 0.35rem; font-size: 0.85rem;">${logs || "—"}</div>
+            </div>
+          `;
+        })
+        .join("");
+      runResult.innerHTML = summary + details;
+    }
+
+    function renderRunResult(data) {
+      const cls = data.passed ? "pass" : "fail";
+      const statusLabel = data.passed ? "Passed" : "Failed";
+      const logs = (data.stepLogs || [])
+        .map(
+          (l) =>
+            `<div class="step-log ${l.status}">Step ${l.step}: ${escapeHtml(l.action)} — ${l.status}${l.detail ? " · " + escapeHtml(l.detail) : ""}</div>`
+        )
+        .join("");
+      runResult.innerHTML = `
+        <div class="result-box ${cls}">
+          <div style="font-size: 1rem; margin-bottom: 0.5rem;"><strong>${statusLabel}:</strong> ${escapeHtml(data.title)}</div>
+          ${data.errorMessage ? `<div class="step-log fail" style="margin-bottom: 0.5rem;">${escapeHtml(data.errorMessage)}</div>` : ""}
+          <div style="margin-top: 0.5rem;">${logs || "No step logs."}</div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return "";
+      const div = document.createElement("div");
+      div.textContent = s;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

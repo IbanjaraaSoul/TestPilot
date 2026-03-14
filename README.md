@@ -1,0 +1,92 @@
+# TestPilot
+
+**AI-powered test pilot:** paste a story or MR → AI generates test cases → run them in the browser (Playwright). Built for delta testing—new tests that come with every story.
+
+## What this demos
+
+1. **Input**: Story or MR description (e.g. “User can log in with email and password”).
+2. **Generate**: AI suggests test cases (scenarios, steps, expected results).
+3. **Execute**: Run the first test case against a given URL (Playwright); step-by-step result is shown.
+
+## Quick start
+
+### 1. Install and env
+
+```bash
+npm install
+cp .env.example .env
+```
+
+**AI for test case generation (required — pick one):**
+
+- **Ollama (free, no API key)**  
+  1. Install [Ollama](https://ollama.com) and run: `ollama run llama3.2` (or `mistral` / `llama3.1`).  
+  2. Leave `OPENAI_API_KEY` unset. The app will use `http://localhost:11434/v1` by default.  
+  3. Optional in `.env`: `OLLAMA_BASE_URL=http://localhost:11434/v1`, `OLLAMA_MODEL=llama3.2`.
+
+- **OpenAI**  
+  Set `OPENAI_API_KEY=sk-...` in `.env`. Uses `gpt-4o-mini`.
+
+- If neither is available,  
+  If both are missing (and Ollama isn’t running), you must set up OpenAI or run Ollama (see above).
+
+### 2. Install Playwright browsers (one-time)
+
+```bash
+npx playwright install chromium
+```
+
+### 3. Run the demo target app (optional but recommended)
+
+In one terminal:
+
+```bash
+npm run demo-target
+```
+
+This serves a minimal login page at **http://localhost:3456**.
+
+### 4. Run the server
+
+In another terminal:
+
+```bash
+npm start
+```
+
+Open **http://localhost:3000**.
+
+### 5. Try the flow
+
+1. In the textarea, paste a story, e.g.  
+   **"As a user I want to log in with email and password. Acceptance criteria: Email and password fields, Submit button, show welcome message on success, show error on invalid credentials."**
+2. Click **Generate test cases**.
+3. Review the generated test cases.
+4. In **Base URL** enter `http://localhost:3456` (if the demo target is running).
+5. Click **Run first test**. A **Chromium window** opens so you can watch the test run (navigate → fill email/password → click Submit). **Important:** The browser opens on the machine where the server is running — start the server from a **local terminal** (e.g. Terminal.app), not from SSH or a headless environment. If you don’t see the window, check other desktops or use Cmd+Tab. When the test finishes, the UI shows **Passed** or **Failed** with step-by-step logs.
+
+## Architecture
+
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for diagrams: high-level flow, component view, sequence diagrams (generate test cases / run test), and deployment view. The doc uses [Mermaid](https://mermaid.js.org/) — render it in VS Code (Markdown Preview), GitHub, or any Mermaid-supported viewer.
+
+## Project layout
+
+- `server.js` – Express server and routes.
+- `api/generate.js` – Calls OpenAI to produce test cases from story/MR text.
+- `api/execute.js` – Runs one test case with Playwright (navigate, fill, click, basic checks).
+- `public/index.html` – UI: story input, test case list, run first test.
+- `demo-target/` – Minimal login page used as the “app under test”.
+- `demo-target-server.js` – Serves the demo target on port 3456.
+
+## Limitations
+
+- **Execution** is heuristic: steps are mapped to generic actions (e.g. “enter email” → fill first email input). Complex flows need real selectors or a proper test layer.
+- **One test at a time**: only “Run first test” is implemented.
+- **AI**: requires OpenAI (API key) or **Ollama** (local, free). No mock fallback.
+
+## Possible next steps
+
+- Add MR/diff input (e.g. paste diff or link to MR).
+- Generate Playwright scripts per test case and save to repo.
+- Support multiple tests and a simple report.
+- Richer step-to-action mapping or selector hints from the story.
