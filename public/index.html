@@ -135,6 +135,20 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .running-state p { margin: 0; color: var(--text); }
     .running-state .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .live-run-wrap { margin-top: 1rem; }
+    .live-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
+    }
+    .live-panel .live-line { margin-bottom: 0.5rem; }
+    .live-panel .live-line:last-child { margin-bottom: 0; }
+    .live-panel strong { color: var(--accent); }
+    .live-panel .live-detail { font-size: 0.8rem; margin-top: 0.35rem; color: var(--muted); font-family: "JetBrains Mono", monospace; word-break: break-word; }
+    .live-panel .muted { color: var(--muted); }
     .result-box {
       margin-top: 1rem;
       padding: 1rem;
@@ -177,7 +191,7 @@
         <button class="btn-secondary" id="runFirstBtn">Run first test</button>
         <button class="btn-secondary" id="runAllBtn">Run all tests</button>
       </div>
-      <p class="run-hint"><strong>Tip:</strong> The test browser opens on the machine where the server is running. Start the server from a <strong>local terminal</strong> (e.g. Terminal.app) with <code>npm start</code> — not from a remote/SSH session — so a Chromium window can appear. Check other desktops or use Cmd+Tab if you don’t see it.</p>
+      <p class="run-hint"><strong>Tip:</strong> The test browser opens on the machine where the server is running. Start the server from a <strong>local terminal</strong> (e.g. Terminal.app) with <code>npm start</code> — not from a remote/SSH session — so a Chromium window can appear. Check other desktops or use Cmd+Tab if you don’t see it. <strong>While tests run</strong>, the panel below shows live suite pass/fail counts and the current step; <strong>full step logs</strong> appear in the summary after the run finishes.</p>
       <div id="runResult"></div>
     </div>
   </div>
@@ -253,6 +267,41 @@
         .join("");
     }
 
+    function renderLiveRunningShell({ testTotal, suitePass, suiteFail, testIndex, testTitle, stepIndex, stepTotal, stepAction, detail }) {
+      return `
+        <div class="live-run-wrap">
+          <div class="live-panel">
+            <div class="live-line">Suite: <strong id="livePass">${suitePass}</strong> passed · <strong id="liveFail">${suiteFail}</strong> failed · Test <strong id="liveTn">${testIndex}</strong>/<strong id="liveTt">${testTotal}</strong></div>
+            <div class="live-line"><strong>Current test:</strong> <span id="liveTitle">${escapeHtml(testTitle || "—")}</span></div>
+            <div class="live-line"><strong>Step</strong> <span id="liveSi">${stepIndex}</span>/<span id="liveSt">${stepTotal}</span>: <span id="liveAct">${escapeHtml(stepAction || "—")}</span></div>
+            <div class="live-detail" id="liveDet">${escapeHtml(detail || "")}</div>
+          </div>
+          <div class="running-state">
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+              <p><strong>Running…</strong></p>
+              <p class="hint">Browser opens on this machine — watch steps there; live status updates here.</p>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function updateLiveDom(patch) {
+      const set = (id, v) => {
+        const el = document.getElementById(id);
+        if (el != null) el.textContent = v;
+      };
+      if (patch.suitePass != null) set("livePass", patch.suitePass);
+      if (patch.suiteFail != null) set("liveFail", patch.suiteFail);
+      if (patch.testIndex != null) set("liveTn", patch.testIndex);
+      if (patch.testTotal != null) set("liveTt", patch.testTotal);
+      if (patch.testTitle != null) set("liveTitle", patch.testTitle);
+      if (patch.stepIndex != null) set("liveSi", patch.stepIndex);
+      if (patch.stepTotal != null) set("liveSt", patch.stepTotal);
+      if (patch.stepAction != null) set("liveAct", patch.stepAction);
+      if (patch.detail != null) set("liveDet", patch.detail);
+    }
+
     runFirstBtn.addEventListener("click", async () => {
       if (lastTestCases.length === 0) {
         runResult.innerHTML = '<span class="error">Generate test cases first.</span>';
@@ -264,38 +313,98 @@
         return;
       }
       runFirstBtn.disabled = true;
-      runResult.innerHTML = `
-        <div class="running-state">
-          <div class="spinner" aria-hidden="true"></div>
-          <div>
-            <p><strong>Running test…</strong></p>
-            <p class="hint">A browser window will open — watch the steps execute. This may take 10–30 seconds.</p>
-          </div>
-        </div>
-      `;
+      runResult.innerHTML = renderLiveRunningShell({
+        testTotal: 1,
+        suitePass: 0,
+        suiteFail: 0,
+        testIndex: 1,
+        testTitle: lastTestCases[0].title || "—",
+        stepIndex: 0,
+        stepTotal: 0,
+        stepAction: "Starting…",
+        detail: "",
+      });
+      const onLive = (evt) => {
+        if (evt.type === "test_meta") {
+          updateLiveDom({
+            testTitle: evt.title,
+            stepTotal: evt.stepTotal,
+            stepIndex: 0,
+            stepAction: "Opening page…",
+            detail: evt.baseUrl || "",
+          });
+        } else if (evt.type === "nav_done") {
+          updateLiveDom({ stepAction: "Page loaded", detail: "" });
+        } else if (evt.type === "step_start") {
+          updateLiveDom({
+            stepIndex: evt.stepIndex,
+            stepTotal: evt.stepTotal,
+            stepAction: evt.action || "—",
+            detail: "Running…",
+          });
+        } else if (evt.type === "step_done") {
+          updateLiveDom({
+            detail: (evt.status || "") + (evt.detail ? " · " + evt.detail : ""),
+          });
+        }
+      };
       try {
         const ctrl = new AbortController();
-        const timeoutId = setTimeout(() => ctrl.abort(), 55000);
-        const res = await fetch("/api/execute", {
+        const timeoutId = setTimeout(() => ctrl.abort(), 120000);
+        const res = await fetch("/api/execute-stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ testCase: lastTestCases[0], baseUrl }),
           signal: ctrl.signal,
         });
         clearTimeout(timeoutId);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Execution failed");
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Execution failed");
+        }
+        const data = await readExecuteNdjsonStream(res.body, onLive);
         renderRunResult(data);
       } catch (e) {
         const isTimeout = e.name === "AbortError";
         const msg = isTimeout
-          ? "Request timed out. Run the server from a local terminal (e.g. Terminal.app) so the test browser can open. The browser window appears where the server is running."
+          ? "Request timed out. Run the server from a local terminal (e.g. Terminal.app) so the test browser can open."
           : e.message;
         runResult.innerHTML = `<div class="result-box fail">${escapeHtml(msg)}</div>`;
       } finally {
         runFirstBtn.disabled = false;
       }
     });
+
+    async function readExecuteNdjsonStream(body, onEvent) {
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let finalResult = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          const evt = JSON.parse(line);
+          if (evt.type === "done") finalResult = evt.result;
+          else if (evt.type === "error") throw new Error(evt.error);
+          else onEvent(evt);
+        }
+      }
+      const tail = buf.trim();
+      if (tail) {
+        const evt = JSON.parse(tail);
+        if (evt.type === "done") finalResult = evt.result;
+        else if (evt.type === "error") throw new Error(evt.error);
+        else onEvent(evt);
+      }
+      if (!finalResult) throw new Error("No result from server stream");
+      return finalResult;
+    }
 
     async function runAllTests(baseUrl) {
       if (lastTestCases.length === 0) {
@@ -306,28 +415,76 @@
       runAllBtn.disabled = true;
       const total = lastTestCases.length;
       const results = [];
+      let suitePass = 0;
+      let suiteFail = 0;
+      runResult.innerHTML = renderLiveRunningShell({
+        testTotal: total,
+        suitePass: 0,
+        suiteFail: 0,
+        testIndex: 1,
+        testTitle: lastTestCases[0].title || "—",
+        stepIndex: 0,
+        stepTotal: 0,
+        stepAction: "Starting suite…",
+        detail: "",
+      });
+      const makeOnLive = (testIdx) => (evt) => {
+        if (evt.type === "test_meta") {
+          updateLiveDom({
+            testTitle: evt.title,
+            stepTotal: evt.stepTotal,
+            stepIndex: 0,
+            stepAction: "Opening page…",
+            detail: evt.baseUrl || "",
+            testIndex: testIdx,
+            testTotal: total,
+            suitePass,
+            suiteFail,
+          });
+        } else if (evt.type === "nav_done") {
+          updateLiveDom({ stepAction: "Page loaded", detail: "" });
+        } else if (evt.type === "step_start") {
+          updateLiveDom({
+            stepIndex: evt.stepIndex,
+            stepTotal: evt.stepTotal,
+            stepAction: evt.action || "—",
+            detail: "Running…",
+          });
+        } else if (evt.type === "step_done") {
+          updateLiveDom({
+            detail: (evt.status || "") + (evt.detail ? " · " + evt.detail : ""),
+          });
+        }
+      };
       for (let i = 0; i < total; i++) {
-        runResult.innerHTML = `
-          <div class="running-state">
-            <div class="spinner" aria-hidden="true"></div>
-            <div>
-              <p><strong>Running test ${i + 1} of ${total}…</strong></p>
-              <p class="hint">${escapeHtml(lastTestCases[i].title)}</p>
-            </div>
-          </div>
-        `;
+        updateLiveDom({
+          testIndex: i + 1,
+          testTotal: total,
+          testTitle: lastTestCases[i].title || "—",
+          suitePass,
+          suiteFail,
+          stepAction: "Connecting…",
+          detail: "",
+        });
         try {
           const ctrl = new AbortController();
-          const timeoutId = setTimeout(() => ctrl.abort(), 60000);
-          const res = await fetch("/api/execute", {
+          const timeoutId = setTimeout(() => ctrl.abort(), 120000);
+          const res = await fetch("/api/execute-stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ testCase: lastTestCases[i], baseUrl }),
             signal: ctrl.signal,
           });
           clearTimeout(timeoutId);
-          const data = await res.json();
-          results.push(res.ok ? data : { ...data, passed: false, errorMessage: data.error || "Request failed" });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "Request failed");
+          }
+          const data = await readExecuteNdjsonStream(res.body, makeOnLive(i + 1));
+          results.push(data);
+          if (data.passed) suitePass++;
+          else suiteFail++;
+          updateLiveDom({ suitePass, suiteFail });
         } catch (e) {
           results.push({
             title: lastTestCases[i].title,
@@ -335,6 +492,8 @@
             errorMessage: e.name === "AbortError" ? "Request timed out" : e.message,
             stepLogs: [],
           });
+          suiteFail++;
+          updateLiveDom({ suitePass, suiteFail });
         }
       }
       renderRunAllResults(results);

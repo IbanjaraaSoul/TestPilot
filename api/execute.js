@@ -156,7 +156,8 @@ function normalizeBaseUrl(raw) {
   return `https://${t}`;
 }
 
-export async function runTest(testCase, rawBaseUrl) {
+export async function runTest(testCase, rawBaseUrl, options = {}) {
+  const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   if (!baseUrl) {
     throw new Error("Base URL is required (e.g. https://onepay.com or http://localhost:3456).");
@@ -165,6 +166,14 @@ export async function runTest(testCase, rawBaseUrl) {
   const logs = [];
   let passed = true;
   let errorMessage = null;
+
+  onProgress({
+    type: "test_meta",
+    title: testCase.title,
+    testCaseId: testCase.id,
+    stepTotal: steps.length,
+    baseUrl,
+  });
 
   console.log("\n--- Test run ---");
   console.log(`Test: ${testCase.title}`);
@@ -194,11 +203,19 @@ export async function runTest(testCase, rawBaseUrl) {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
     await delay();
     console.log("  [✓] (initial) Navigate to app — OK");
+    onProgress({ type: "nav_done", baseUrl });
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const action = (step.action || "").toLowerCase();
       const expected = step.expectedResult || "";
+
+      onProgress({
+        type: "step_start",
+        stepIndex: i + 1,
+        stepTotal: steps.length,
+        action: step.action || "",
+      });
 
       try {
         if (action.includes("navigate") || action.includes("open") || action.includes("go to")) {
@@ -306,11 +323,30 @@ export async function runTest(testCase, rawBaseUrl) {
           logs.push({ step: i + 1, action: step.action, status: "skip", detail: "No automation mapping" });
           logStep(i + 1, step.action, "skip", "No automation mapping");
         }
+        const doneLog = logs.filter((l) => l.step === i + 1).pop();
+        if (doneLog) {
+          onProgress({
+            type: "step_done",
+            stepIndex: i + 1,
+            stepTotal: steps.length,
+            action: step.action || "",
+            status: doneLog.status,
+            detail: doneLog.detail || "",
+          });
+        }
       } catch (stepErr) {
         passed = false;
         errorMessage = stepErr.message;
         logs.push({ step: i + 1, action: step.action, status: "fail", detail: stepErr.message });
         logStep(i + 1, step.action, "fail", stepErr.message);
+        onProgress({
+          type: "step_done",
+          stepIndex: i + 1,
+          stepTotal: steps.length,
+          action: step.action || "",
+          status: "fail",
+          detail: stepErr.message,
+        });
         break;
       }
     }

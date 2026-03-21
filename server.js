@@ -45,6 +45,33 @@ app.post("/api/execute", async (req, res) => {
   }
 });
 
+/** NDJSON stream: one JSON object per line for live progress, final line `{ type: "done", result }` or `{ type: "error", error }`. */
+app.post("/api/execute-stream", async (req, res) => {
+  try {
+    const { testCase, baseUrl } = req.body;
+    if (!testCase || !baseUrl) {
+      return res.status(400).json({ error: "Provide testCase and baseUrl." });
+    }
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("X-Accel-Buffering", "no");
+    const write = (obj) => {
+      res.write(JSON.stringify(obj) + "\n");
+    };
+    const result = await runTest(testCase, baseUrl, { onProgress: write });
+    write({ type: "done", result });
+    res.end();
+  } catch (err) {
+    console.error("Execute stream error:", err);
+    try {
+      res.write(JSON.stringify({ type: "error", error: err.message || "Test execution failed." }) + "\n");
+      res.end();
+    } catch {
+      /* response may be closed */
+    }
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`TestPilot running at http://localhost:${PORT}`);
 });
