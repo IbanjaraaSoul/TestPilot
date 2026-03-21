@@ -37,22 +37,48 @@ If neither is set (and Ollama isn’t running), generation will fail; set up Ope
 npx playwright install chromium
 ```
 
-### 3. Run the demo target app (optional but recommended)
+### 3. Run everything at once (recommended on macOS)
 
-In one terminal:
+From the project root, one command opens **three separate Terminal.app windows**:
+
+```bash
+npm run dev:all
+```
+
+This runs, in order:
+
+1. `ollama run llama3.2`
+2. `npm run demo-target` → **http://localhost:3456**
+3. `npm start` → **http://localhost:3000**
+
+**macOS only** (uses AppleScript). If Terminal asks for automation permission, allow it in **System Settings → Privacy & Security → Automation**.
+
+**All in one terminal** (any OS — colored, prefixed logs):
+
+```bash
+npm run dev:all:one
+```
+
+### 4. Or run services manually
+
+**Demo target** (optional but recommended) — one terminal:
 
 ```bash
 npm run demo-target
 ```
 
-This serves a minimal login page at **http://localhost:3456**.
+Serves the minimal login page at **http://localhost:3456**.
 
-### 4. Run the server
-
-In another terminal:
+**TestPilot server** — another terminal:
 
 ```bash
 npm start
+```
+
+**Ollama** — another terminal (if you use local LLM):
+
+```bash
+ollama run llama3.2
 ```
 
 Open **http://localhost:3000**.

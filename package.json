@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "demo-target": "node demo-target-server.js"
+    "demo-target": "node demo-target-server.js",
+    "dev:all": "bash scripts/dev-all-macos.sh",
+    "dev:all:one": "concurrently -n ollama,demo,app -c blue,green,cyan \"ollama run llama3.2\" \"npm run demo-target\" \"npm start\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   },
   "dependencies": {
     "cors": "^2.8.5",

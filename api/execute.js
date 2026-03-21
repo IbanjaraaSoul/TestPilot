@@ -104,7 +104,63 @@ async function getLocatorFromStep(page, step, kind) {
   return null;
 }
 
-export async function runTest(testCase, baseUrl) {
+const FORCE_CLICK = { force: true, timeout: 20000 };
+const FORCE_FILL = { force: true, timeout: 20000 };
+
+/** True for "click" / "submit" / "press", but NOT "clickable" (substring false positive). */
+function isExplicitClickAction(actionLower) {
+  return /\b(click|clicked|submit|press)\b/i.test(actionLower);
+}
+
+/** If login email/password fields are not visible yet, try opening Sign in (modal or new page). */
+async function ensureLoginFormVisible(page) {
+  const emailSel =
+    'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"], input[placeholder*="Mail"]';
+  if ((await page.locator(emailSel).count()) > 0) return;
+  const signIn = page.getByRole("link", { name: /sign\s*in/i }).or(page.getByRole("button", { name: /sign\s*in/i }));
+  if ((await signIn.count()) > 0) {
+    await signIn.first().click(FORCE_CLICK).catch(() => {});
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await new Promise((r) => setTimeout(r, 600));
+  }
+}
+
+/** Open Join / sign-up UI if inputs are not visible (marketing sites use modals). */
+async function ensureSignUpFormVisible(page) {
+  if ((await page.locator("input:visible").count()) >= 2) return;
+  const join = page.getByRole("button", { name: /join\s*one\s*pay/i });
+  if ((await join.count()) > 0) {
+    await join.first().click(FORCE_CLICK).catch(() => {});
+    await new Promise((r) => setTimeout(r, 900));
+  }
+}
+
+function wantsCombinedEmailPasswordFill(action, expected) {
+  const blob = `${action} ${expected || ""}`.toLowerCase();
+  return /\bemail\b/.test(blob) && /\bpassword\b/.test(blob) && /\b(fill|enter|type|input|form|fields)\b/.test(blob);
+}
+
+function isSignUpContext(action, expected) {
+  return /\b(sign\s*up|sign-up|join\s*one|onboard|register|one\s*time\s*sign)\b/i.test(`${action} ${expected || ""}`);
+}
+
+/** Playwright requires a full URL with a scheme (https:// or http://). */
+function normalizeBaseUrl(raw) {
+  const t = (raw || "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  const lower = t.toLowerCase();
+  if (lower.startsWith("localhost") || lower.startsWith("127.0.0.1")) {
+    return `http://${t}`;
+  }
+  return `https://${t}`;
+}
+
+export async function runTest(testCase, rawBaseUrl) {
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  if (!baseUrl) {
+    throw new Error("Base URL is required (e.g. https://onepay.com or http://localhost:3456).");
+  }
   const steps = testCase.steps || [];
   const logs = [];
   let passed = true;
@@ -112,7 +168,7 @@ export async function runTest(testCase, baseUrl) {
 
   console.log("\n--- Test run ---");
   console.log(`Test: ${testCase.title}`);
-  console.log(`URL:  ${baseUrl}`);
+  console.log(`URL:  ${baseUrl}${rawBaseUrl !== baseUrl ? ` (normalized from "${rawBaseUrl}")` : ""}`);
   console.log("Steps:");
 
   let browser;
@@ -150,55 +206,76 @@ export async function runTest(testCase, baseUrl) {
           logs.push({ step: i + 1, action: step.action, status: "ok", detail: `Navigated to ${baseUrl}` });
           logStep(i + 1, step.action, "ok", `Navigated to ${baseUrl}`);
           await delay();
-        } else if (action.includes("enter") || action.includes("type") || action.includes("fill")) {
-          const forEmail = action.includes("email") || expected.includes("email");
-          const fillValue = forEmail ? "test@example.com" : "test";
-          let loc = getLocatorFromSelector(page, step.selector);
-          if (!loc) loc = forEmail ? await getLocatorFromStep(page, step, "email") : null;
-          if (loc) {
-            await loc.fill(fillValue);
-            const detail = step.selector ? "Filled (selector)" : "Filled (discovered)";
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail });
-            logStep(i + 1, step.action, "ok", detail);
-          } else {
-            const selector = forEmail ? 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"]' : 'input[type="text"], input:not([type="hidden"])';
-            await page.locator(selector).first().fill(fillValue);
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled input" });
-            logStep(i + 1, step.action, "ok", "Filled input");
-          }
+        } else if (wantsCombinedEmailPasswordFill(action, expected)) {
+          if (isSignUpContext(action, expected)) await ensureSignUpFormVisible(page);
+          else await ensureLoginFormVisible(page);
+          const emailSel =
+            'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"], input[placeholder*="Mail"]';
+          const pwdSel = 'input[type="password"], input[name="password"], input[id="password"]';
+          await page.locator(emailSel).first().fill("test@example.com", FORCE_FILL).catch(() => {});
+          await delay();
+          await page.locator(pwdSel).first().fill("password123", FORCE_FILL).catch(() => {});
+          logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled email + password" });
+          logStep(i + 1, step.action, "ok", "Filled email + password");
           await delay();
         } else if (action.includes("password")) {
+          // Before generic "enter" — so "Enter password" fills password, not first text field
+          if (/\b(login|sign\s*in|signin|credential)\b/i.test(action)) {
+            await ensureLoginFormVisible(page);
+          }
+          if (isSignUpContext(action, expected)) await ensureSignUpFormVisible(page);
           let loc = getLocatorFromSelector(page, step.selector);
           if (!loc) loc = await getLocatorFromStep(page, step, "password");
           if (loc) {
-            await loc.fill("password123");
+            await loc.fill("password123", FORCE_FILL);
             const detail = step.selector ? "Filled (selector)" : "Filled (discovered)";
             logs.push({ step: i + 1, action: step.action, status: "ok", detail });
             logStep(i + 1, step.action, "ok", detail);
           } else {
             const sel = 'input[type="password"], input[name="password"], input[id="password"]';
-            await page.locator(sel).first().fill("password123");
+            await page.locator(sel).first().fill("password123", FORCE_FILL);
             logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled password" });
             logStep(i + 1, step.action, "ok", "Filled password");
           }
           await delay();
-        } else if (action.includes("click") || action.includes("submit") || action.includes("press")) {
+        } else if (
+          action.includes("enter") ||
+          action.includes("type") ||
+          action.includes("fill") ||
+          action.includes("input") ||
+          // LLM phrasing: "Login with email address …" without explicit "fill"
+          (action.includes("email") &&
+            !action.includes("password") &&
+            /\b(login|sign\s*in|signin|form|credential|address)\b/i.test(action))
+        ) {
+          const forEmail = action.includes("email") || expected.toLowerCase().includes("email");
+          const fillValue = forEmail ? "test@example.com" : "test";
+          if (forEmail && /\b(login|sign\s*in|signin|credential)\b/i.test(action)) {
+            await ensureLoginFormVisible(page);
+          }
           let loc = getLocatorFromSelector(page, step.selector);
-          if (!loc) loc = await getLocatorFromStep(page, step, "click");
+          if (!loc) loc = forEmail ? await getLocatorFromStep(page, step, "email") : null;
           if (loc) {
-            await loc.click();
-            const detail = step.selector ? "Clicked (selector)" : "Clicked (discovered)";
+            await loc.fill(fillValue, FORCE_FILL);
+            const detail = step.selector ? "Filled (selector)" : "Filled (discovered)";
             logs.push({ step: i + 1, action: step.action, status: "ok", detail });
             logStep(i + 1, step.action, "ok", detail);
           } else {
-            const btn = page.locator('button[type="submit"], input[type="submit"], button, a.button, [role="button"]').first();
-            await btn.click();
-            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked" });
-            logStep(i + 1, step.action, "ok", "Clicked");
+            const selector = forEmail ? 'input[type="email"], input[name="email"], input[id="email"], input[placeholder*="mail"]' : 'input[type="text"], input:not([type="hidden"])';
+            await page.locator(selector).first().fill(fillValue, FORCE_FILL);
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Filled input" });
+            logStep(i + 1, step.action, "ok", "Filled input");
           }
-          await page.waitForLoadState("domcontentloaded").catch(() => {});
           await delay();
-        } else if (action.includes("see") || action.includes("verify") || action.includes("check") || expected) {
+        } else if (
+          action.includes("see") ||
+          action.includes("verify") ||
+          action.includes("check") ||
+          action.includes("assert") ||
+          action.includes("ensure") ||
+          action.includes("confirm") ||
+          action.includes("validate")
+        ) {
           await delay();
           const text = expected || action;
           const found = await page.getByText(text, { exact: false }).first().isVisible().catch(() => false);
@@ -209,6 +286,22 @@ export async function runTest(testCase, baseUrl) {
             logs.push({ step: i + 1, action: step.action, status: "skip", detail: `Could not verify text; page content available for manual check.` });
             logStep(i + 1, step.action, "skip", "Could not verify text");
           }
+        } else if (isExplicitClickAction(action)) {
+          let loc = getLocatorFromSelector(page, step.selector);
+          if (!loc) loc = await getLocatorFromStep(page, step, "click");
+          if (loc) {
+            await loc.click(FORCE_CLICK);
+            const detail = step.selector ? "Clicked (selector)" : "Clicked (discovered)";
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail });
+            logStep(i + 1, step.action, "ok", detail);
+          } else {
+            const btn = page.locator('button[type="submit"], input[type="submit"], button, a.button, [role="button"]').first();
+            await btn.click(FORCE_CLICK);
+            logs.push({ step: i + 1, action: step.action, status: "ok", detail: "Clicked" });
+            logStep(i + 1, step.action, "ok", "Clicked");
+          }
+          await page.waitForLoadState("domcontentloaded").catch(() => {});
+          await delay();
         } else {
           logs.push({ step: i + 1, action: step.action, status: "skip", detail: "No automation mapping" });
           logStep(i + 1, step.action, "skip", "No automation mapping");
