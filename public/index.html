@@ -228,7 +228,10 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Request failed");
         lastTestCases = data.testCases || [];
-        if (lastTestCases.length === 0) throw new Error("No test cases returned. Is Ollama running? Try: ollama run llama3.2");
+        if (lastTestCases.length === 0)
+          throw new Error(
+            "No test cases returned. Set OPENAI_API_KEY or OLLAMA_API_KEY in .env (Ollama Cloud: ollama.com/settings/keys)."
+          );
         renderTestCases(lastTestCases);
         testCasesSection.hidden = false;
         if (autoModeEl && autoModeEl.checked) {

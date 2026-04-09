@@ -21,7 +21,12 @@ app.post("/api/generate-test-cases", async (req, res) => {
     if (!input.trim()) {
       return res.status(400).json({ error: "Provide at least story, mrDescription, or diffSnippet." });
     }
-    console.log("Generate test cases: request received (using " + (process.env.OPENAI_API_KEY ? "OpenAI" : "Ollama") + ")...");
+    const aiLabel = process.env.OPENAI_API_KEY
+      ? "OpenAI"
+      : (process.env.OLLAMA_API_KEY || "").trim()
+        ? "Ollama Cloud"
+        : "not configured";
+    console.log("Generate test cases: request received (using " + aiLabel + ")...");
     const testCases = await generateTestCases(input);
     console.log("Generate test cases: OK,", testCases.length, "cases");
     return res.json({ testCases });

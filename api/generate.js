@@ -294,16 +294,22 @@ export async function generateTestCases(input) {
     return testCases;
   }
 
-  // 2) Ollama (local, no API key). Use 127.0.0.1 to avoid IPv6 localhost issues.
-  const ollamaBase = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1";
-  const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
+  // 2) Ollama Cloud only (hosted API — no local Ollama daemon).
+  const ollamaApiKey = (process.env.OLLAMA_API_KEY || "").trim();
+  if (!ollamaApiKey) {
+    throw new Error(
+      "No AI provider configured. Set OPENAI_API_KEY or OLLAMA_API_KEY in .env. Ollama Cloud keys: https://ollama.com/settings/keys"
+    );
+  }
+  const ollamaBase = (process.env.OLLAMA_CLOUD_BASE_URL || "https://ollama.com/v1").replace(/\/+$/, "");
+  const ollamaModel = process.env.OLLAMA_MODEL || "gemma4:31b-cloud";
   const ollamaTimeout = Number(process.env.OLLAMA_TIMEOUT_MS) || 120000; // 2 min (first run can be slow)
   // Omit max_tokens so Ollama uses default -1 (unlimited). Set OLLAMA_MAX_TOKENS to cap (e.g. 4096).
   const ollamaMaxTokens = process.env.OLLAMA_MAX_TOKENS ? Number(process.env.OLLAMA_MAX_TOKENS) : undefined;
   const maxAttempts = 3; // Retry when response is truncated or empty (Ollama can be slow or cut off mid-JSON)
   try {
     const openai = new OpenAI({
-      apiKey: "ollama",
+      apiKey: ollamaApiKey,
       baseURL: ollamaBase,
       timeout: ollamaTimeout,
     });
@@ -337,14 +343,9 @@ export async function generateTestCases(input) {
     throw new Error("Ollama returned an empty response. Try again or use a different model.");
   } catch (err) {
     const msg = err.message || "";
-    if (msg.includes("No LLM") || msg.includes("Ollama returned")) throw err;
+    if (msg.includes("No AI provider") || msg.includes("No LLM") || msg.includes("Ollama returned")) throw err;
     throw new Error(
-      "Ollama error. Ensure Ollama is running (ollama run llama3.2) and reachable at " +
-        ollamaBase +
-        ". " +
-        (msg ? msg : "")
+      `Ollama Cloud error (${ollamaBase}, model ${ollamaModel}). Check OLLAMA_API_KEY and model name. ${msg}`
     );
   }
-
-  throw new Error("No LLM configured. Add OPENAI_API_KEY to .env or run Ollama (ollama run llama3.2).");
 }

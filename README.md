@@ -18,18 +18,18 @@ npm install
 cp .env.example .env
 ```
 
-**AI for test case generation (required — pick one):**
+**AI for test case generation (required — pick one; cloud only, no local LLM):**
 
-- **Ollama (free, no API key)**  
-  1. Install [Ollama](https://ollama.com) and run: `ollama run llama3.2` (or `mistral` / `llama3.1`).  
-  2. Leave `OPENAI_API_KEY` unset. The app uses `http://127.0.0.1:11434/v1` by default.  
-  3. Optional in `.env`: `OLLAMA_BASE_URL`, `OLLAMA_MODEL=llama3.2`, `OLLAMA_TIMEOUT_MS=120000`.  
-  4. **Token limit**: By default Ollama uses unlimited output. To cap length, set `OLLAMA_MAX_TOKENS=4096` (or any number) in `.env`.
+- **Ollama Cloud**  
+  1. Create an API key at [ollama.com/settings/keys](https://ollama.com/settings/keys).  
+  2. Set `OLLAMA_API_KEY=...` in `.env`. The app calls `https://ollama.com/v1` (OpenAI-compatible).  
+  3. Default model is `gemma4:31b-cloud` unless you set `OLLAMA_MODEL` (see [cloud models](https://ollama.com/search?c=cloud)).  
+  4. Leave `OPENAI_API_KEY` unset if you use Ollama.
 
 - **OpenAI**  
-  Set `OPENAI_API_KEY=sk-...` in `.env`. Uses `gpt-4o-mini`.
+  Set `OPENAI_API_KEY=sk-...` in `.env`. Uses `gpt-4o-mini`. Leave `OLLAMA_API_KEY` unset.
 
-If neither is set (and Ollama isn’t running), generation will fail; set up OpenAI or run Ollama as above.
+If neither key is set, generation returns an error until you configure `.env`.
 
 ### 2. Install Playwright browsers (one-time)
 
@@ -39,17 +39,16 @@ npx playwright install chromium
 
 ### 3. Run everything at once (recommended on macOS)
 
-From the project root, one command opens **three separate Terminal.app windows**:
+From the project root, one command opens **two separate Terminal.app windows** (demo target + TestPilot):
 
 ```bash
 npm run dev:all
 ```
 
-This runs, in order:
+This runs:
 
-1. `ollama run llama3.2`
-2. `npm run demo-target` → **http://localhost:3456**
-3. `npm start` → **http://localhost:3000**
+1. `npm run demo-target` → **http://localhost:3456**
+2. `npm start` → **http://localhost:3000**
 
 **macOS only** (uses AppleScript). If Terminal asks for automation permission, allow it in **System Settings → Privacy & Security → Automation**.
 
@@ -75,13 +74,7 @@ Serves the minimal login page at **http://localhost:3456**.
 npm start
 ```
 
-**Ollama** — another terminal (if you use local LLM):
-
-```bash
-ollama run llama3.2
-```
-
-Open **http://localhost:3000**.
+Open **http://localhost:3000**. Test generation uses **OpenAI** or **Ollama Cloud** from your `.env` (no local Ollama app).
 
 ### 5. Try the flow
 
@@ -109,7 +102,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for diagrams: high-level flow, compon
 ## Project layout
 
 - `server.js` – Express server and routes.
-- `api/generate.js` – Calls OpenAI or Ollama to produce test cases from story/MR text (prompts for ≥3 cases, repairs common Ollama JSON issues).
+- `api/generate.js` – Calls OpenAI or **Ollama Cloud** to produce test cases from story/MR text (prompts for ≥3 cases, repairs common Ollama JSON issues).
 - `api/execute.js` – Runs one test case with Playwright; discovers locators from step text or uses optional selectors.
 - `public/index.html` – UI: story input, **Generate test cases**, **Auto mode** checkbox, test case list (with steps), default Base URL, **Run first test** and **Run all tests**.
 - `demo-target/` – Minimal login page used as the “app under test”.
@@ -119,7 +112,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for diagrams: high-level flow, compon
 
 - **Execution** uses automatic locator discovery (role, text, form context) by default. For **complex flows**, the LLM can add optional **selectors** per step; the executor uses them when present.
 - **Run first test** runs one case; **Run all tests** runs every generated case in sequence and shows a summary. **Auto mode** runs all tests right after generation.
-- **AI**: requires OpenAI (API key) or **Ollama** (local, free). No mock fallback.
+- **AI**: requires **OpenAI** or **Ollama Cloud** (API key from ollama.com). No mock fallback and no local Ollama daemon.
 
 ## Selectors for complex flows
 

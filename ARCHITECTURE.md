@@ -17,8 +17,7 @@ flowchart LR
 
     subgraph AI["AI / Test design"]
         OpenAI["OpenAI\n(gpt-4o-mini)"]
-        Ollama["Ollama\n(local)"]
-        Mock["Mock cases\n(no key)"]
+        Ollama["Ollama Cloud\n(ollama.com)"]
     end
 
     subgraph Execution["Test execution"]
@@ -34,7 +33,6 @@ flowchart LR
     Browser -->|"2. POST story"| Gen
     Gen --> OpenAI
     Gen --> Ollama
-    Gen --> Mock
     Gen -->|"test cases JSON"| Browser
     Browser -->|"3. POST test + URL"| Exec
     Exec --> PW
@@ -53,12 +51,12 @@ C4Context
     Person(user, "Tester", "Pastes story, runs tests")
     System(poc, "TestPilot", "Story → test cases → run test")
     System_Ext(openai, "OpenAI API", "Optional: generate test cases")
-    System_Ext(ollama, "Ollama", "Optional: local LLM")
+    System_Ext(ollama, "Ollama Cloud", "Optional: generate test cases")
     System(demo, "Demo target", "Login page under test")
 
     Rel(user, poc, "Uses")
     Rel(poc, openai, "Calls if API key set")
-    Rel(poc, ollama, "Calls if no key, Ollama running")
+    Rel(poc, ollama, "Calls if OLLAMA_API_KEY set")
     Rel(poc, demo, "Playwright drives browser to")
 ```
 
@@ -68,7 +66,7 @@ C4Context
 sequenceDiagram
     participant U as Browser (user)
     participant S as TestPilot Server
-    participant AI as OpenAI / Ollama / Mock
+    participant AI as OpenAI / Ollama Cloud
 
     U->>S: POST /api/generate-test-cases { story }
     S->>AI: Request test cases
@@ -113,7 +111,7 @@ flowchart TB
     B -->|"Serves + API"| E["localhost:3000\n(TestPilot UI + /api/*)"]
     C -->|"HTTP"| E
     E -->|"Optional"| F["OpenAI API"]
-    E -->|"Optional"| G["Ollama localhost:11434"]
+    E -->|"Optional"| G["Ollama Cloud\n(ollama.com)"]
     E -->|"Playwright"| H["Chromium window"]
     H -->|"HTTP"| D
 ```
@@ -123,7 +121,7 @@ flowchart TB
 | Component        | Path                    | Role                                      |
 |-----------------|-------------------------|-------------------------------------------|
 | TestPilot server | `server.js`             | Express, static files, API routes          |
-| Generate API    | `api/generate.js`       | OpenAI / Ollama / mock → test cases        |
+| Generate API    | `api/generate.js`       | OpenAI / Ollama Cloud → test cases        |
 | Execute API     | `api/execute.js`        | Playwright → steps against baseUrl        |
 | Frontend        | `public/index.html`     | Story input, test list, run, results      |
 | Demo target     | `demo-target/`          | Minimal login page (app under test)       |
